@@ -1,0 +1,32 @@
+Sent packet to port:
+    (seq_num=1, ack_num=0, checksum=13611, flags=0010011) 
+    Data: {is encrypted}
+
+Received packet from port:
+    (seq_num=1, ack_num=0, checksum=61680, flags=0001011) 
+    Data: {is encrypted}
+
+Sent packet to port:
+    (seq_num=2, ack_num=1, checksum=65535, flags=1001011) 
+    Data: {is encrypted}
+
+Received packet from port:
+    (seq_num=2, ack_num=0, checksum=37265, flags=0001011) 
+    Data: {is encrypted}
+
+Sent packet to port:
+    (seq_num=3, ack_num=2, checksum=65535, flags=1001011) 
+    Data: {is encrypted}
+
+Received packet from port:
+    (seq_num=3, ack_num=0, checksum=65535, flags=0000111) 
+    Data: {is encrypted}
+
+Sent packet to port:
+    (seq_num=4, ack_num=3, checksum=65535, flags=1000111) 
+    Data: {is encrypted}
+
+Received packet from port:
+    (seq_num=4, ack_num=4, checksum=65535, flags=1000111) 
+    Data: {is encrypted}
+

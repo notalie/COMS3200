@@ -1,0 +1,192 @@
+% Document class options:
+% 11pt for 11 point font
+\documentclass[11pt, oneside, a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage[hypertexnames=false]{hyperref} 
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    filecolor=magenta,      
+    urlcolor=cyan,
+}
+
+\urlstyle{same}
+
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{array}
+
+
+% Set spacing (i set it to 1.2x)
+\renewcommand{\baselinestretch}{1}
+% Indentation (set this to zero for normal prose)
+\setlength{\parindent}{0em}
+% Line breaking (spacing between paragraphs)
+\setlength{\parskip}{0.5em}
+
+% Use the whole page
+\usepackage{geometry}
+% Extra math glyphs
+\usepackage{amsmath}
+% Proper enumerate spacing
+\usepackage{enumitem}
+% More pleasing screen fonts
+\usepackage{lmodern}
+% Fancy headers
+\usepackage{fancyhdr}
+\usepackage{graphicx}
+% Allows absolute positioning of images
+\usepackage{float}
+% \usepackage[section]{placeins}
+% Set no separation
+\setlist{noitemsep}
+% Set margins to reasonable
+\geometry{margin=2.5cm}
+% Sets graphics path
+\graphicspath{ {./images/} }
+% Sets up fancy headers
+
+\addto\captionsenglish{
+\renewcommand{\listfigurename}{List of Images}
+}
+
+\usepackage{listings}
+\usepackage{color}
+
+\pagestyle{plain}
+
+\begin{document}
+
+
+\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{gray}{rgb}{0.5,0.5,0.5}
+\definecolor{mauve}{rgb}{0.58,0,0.82}
+
+\lstset{frame=tb,
+  language=Python,
+  aboveskip=3mm,
+  belowskip=3mm,
+  showstringspaces=false,
+  columns=flexible,
+  basicstyle={\small\ttfamily},
+  numbers=none,
+  numberstyle=\tiny\color{gray},
+  keywordstyle=\color{blue},
+  commentstyle=\color{dkgreen},
+  stringstyle=\color{mauve},
+  breaklines=true,
+  breakatwhitespace=true,
+  tabsize=3
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Natalie Hong - Computer Networks 1}
+\rhead{COMS3200}
+
+\section*{Part A}
+\subsection*{Scenario 1}
+\subsubsection*{Question 1}
+1460 milliseconds
+
+\subsubsection*{Question 2}
+1980 milliseconds
+
+\subsection*{Scenario 2}
+\href{https://docs.google.com/spreadsheets/d/1m2-pIAhmZVawWgiLYZ5HToiAK6Jz3EaOimxeTKg2bok/edit?usp=sharing}{Excel Sheet}
+
+\subsubsection*{Question 1}
+252.5634143
+
+\subsubsection*{Question 2}
+505.1268286
+
+\subsubsection*{Question 3}
+741.6902429
+
+\subsubsection*{Question 4}
+
+\subsubsection*{Question 5}
+
+\subsubsection*{Question 6}
+
+\subsubsection*{Question 7}
+
+\subsubsection*{Question 8}
+
+
+\newpage
+\section*{Part B}
+
+\subsection*{Question 1: What is the web browser being used by the sender?}
+Firefox
+
+\subsection*{Question 2: What is the web server software being used in the remote server?}
+Server: Microsoft-ISS 7.0
+
+\subsection*{Question 3: Is protocol offloading being used at the client?}
+No it is not
+
+\subsection*{Question 4: How many routers are there between the client and server?}
+2
+
+\subsection*{Question 5: What is the raw TCP sequence number of}
+
+  \subsubsection*{a) the packet initiating the TCP connection?}
+  Sequence Number (raw): 3851697578
+  \subsubsection*{b) the acknowledgement from the server for the above packet?}
+  Sequence Number (raw): 2747564191
+
+\subsection*{Question 6: In frame 4, what are the values of the 8 TCP flags (CWR to FIN) as a single 8-digit binary number?}
+00011000
+
+\subsection*{Question 7: In frame 4, the GET request is for a javascript file resource. What is the address of the web page that requested this javascript file resource?}
+http://a.bcd.com
+
+\subsection*{Question 8: How long should the received javascript file be considered fresh?}
+110 milliseconds
+
+\subsection*{Question 9: What is the initial value of the window scale shift count indicated by}
+    \subsubsection*{a) the client?}
+    7
+
+    \subsubsection*{b) the server?}
+    5
+
+\subsection*{Question 10: The GET packet from the client to the server has an advertised window size of 46. What is the true value window size in bytes?}
+753664 Bytes
+
+\subsection*{Question 11: How many bytes are lost totally while tranmissing is indicated in the pcapfile?}
+answer
+
+\subsection*{Question 12: How  many  duplicate  acknowledgments  are  sent  by  the  client  regarding the missing bytes?}
+answer
+
+\subsection*{Question 13: In which frame is the lost frame retransmitted?}
+answer
+
+\subsection*{Question 14: In  which  frame  does  the  receiver  indicate  that all  missing  frames  have  been received?}
+answer
+
+\subsection*{Question 15: From frame 1 to 3(inclusive), how many frames have incorrect checksum value?}
+answer
+
+\end{document}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
