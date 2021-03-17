@@ -10,7 +10,7 @@ print(sock.getsockname()[1])
 
 while True:
 	data, address = sock.recvfrom(1500)
-	print(data)
+	print(data[0:8])
 
 
 
