@@ -10,6 +10,14 @@ flag_nums = {
 	"ENC": 2
 }
 
+ACK = 0
+NAK = 1
+GET = 2
+DAT = 3
+FIN = 4
+CHK = 5
+ENC = 6
+
 def flag_sum(flags):
 	total = 0
 	for flag in flags:
@@ -27,6 +35,42 @@ def create_packet(sequence_num, ack_num, flags, payload, checksum = 0):
 
 	packet += payload
 	return packet
+
+class Packet():
+	def __init__(self, data):
+		self.seq_num = data[0:2]
+		self.ack_num = data[2:4]
+		self.checksum = data[4:6]
+		self.flags = "{:08b}".format(int(data[6]), 16) 
+		self.flags_raw = data[6]
+		self.header_correct = data[7] == 2
+		self.payload = data[8:]
+
+		self.needs_checksum = self.flags[CHK] == '1'
+		self.needs_encoded = self.flags[ENC] == '1'
+
+
+class Client():
+	def __init__(self, last_packet, sock, address):
+		self.remaining_payloads = [] # For get requests
+
+		self.last_packet = last_packet
+
+		self.address = address
+		self.socket = sock
+
+		self.seq_num = 1
+
+
+
+
+
+
+
+
+
+
+
 
 
 
