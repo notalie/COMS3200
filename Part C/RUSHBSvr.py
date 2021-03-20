@@ -2,6 +2,7 @@ import socket
 import sys
 import data_handling
 import packet
+from threading import Timer
  
 LOCALHOST = "127.0.0.1"
 
@@ -24,7 +25,7 @@ def encrypt():
 # Connect to socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 # TODO: change 53430 to 0
-sock.bind((LOCALHOST, 53430))                                     
+sock.bind((LOCALHOST, 0))                                     
 print(sock.getsockname()[1], flush=True)
 
 def get_empty_payload():
@@ -32,6 +33,9 @@ def get_empty_payload():
 	while len(empty_payload) !=  PAYLOAD_SIZE + 1:
 		empty_payload.append(0)
 	return empty_payload
+
+# Address : [Client, Timer]
+CLIENT_TRACKER = {}
 
 def close_connection(CLIENT, received_packet):
 	packet_to_send = packet.create_packet(CLIENT.seq_num, 
@@ -41,7 +45,14 @@ def close_connection(CLIENT, received_packet):
 def resend_data(CLIENT):
 	CLIENT.socket.sendto(CLIENT.last_packet, CLIENT.address)
 
+def add_packet_timer(CLIENT):
+	CLIENT_TRACKER[CLIENT.address][1] = Timer(4, resend_data, [CLIENT])
+	CLIENT_TRACKER[CLIENT.address][1].start()
+
 def parse_data(CLIENT, sock, address, received_packet):
+	if received_packet.flags[NAK] == '1':
+		CLIENT_TRACKER[CLIENT.address][1].cancel()
+
 	if received_packet.flags[GET] == '1': # [GET]
 		data_handling.parse_file(CLIENT, received_packet)
 	elif received_packet.flags[DAT] == '1' and received_packet.flags[ACK] == '1': # [DAT/ACK]
@@ -52,20 +63,18 @@ def parse_data(CLIENT, sock, address, received_packet):
 		resend_data(CLIENT)
 	else: # No flags/bad - to do for checking later
 		print('none of these')
-		# finish_connection(CLIENT, received_packet)
 
-# Address : Client
-CLIENT_TRACKER = {}
+	add_packet_timer(CLIENT)
 
 while True:
 	data, address = sock.recvfrom(1500)
 	received_packet = packet.Packet(data)
 
 	if address in CLIENT_TRACKER:
-		CLIENT = CLIENT_TRACKER[address]
+		CLIENT = CLIENT_TRACKER[address][0]
 	else:
 		CLIENT = packet.Client(received_packet, sock, address)
-		CLIENT_TRACKER[address] = CLIENT
+		CLIENT_TRACKER[address] = [CLIENT, None]
 
 
 	# 8th byte is not equal to 2
