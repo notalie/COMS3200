@@ -3,6 +3,7 @@ import sys
 import data_handling
 import packet
 from threading import Timer
+import utils
  
 LOCALHOST = "127.0.0.1"
 
@@ -18,28 +19,22 @@ FIN = 4
 CHK = 5
 ENC = 6
 
-def encrypt():
-	encrypted = ''
-	# for i in 
-
 # Connect to socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-# TODO: change 53430 to 0
-sock.bind((LOCALHOST, 0))                                     
+# TODO: change 53734 to 0
+sock.bind((LOCALHOST, 53734))                                     
 print(sock.getsockname()[1], flush=True)
 
-def get_empty_payload():
-	empty_payload = bytearray()
-	while len(empty_payload) !=  PAYLOAD_SIZE + 1:
-		empty_payload.append(0)
-	return empty_payload
-
-# Address : [Client, Timer]
+'''
+	CLIENT_TRACKER -> Address : [Client, Timer]
+	TIMEOUTS
+'''
 CLIENT_TRACKER = {}
 
 def close_connection(CLIENT, received_packet):
-	packet_to_send = packet.create_packet(CLIENT.seq_num, 
-			int.from_bytes(received_packet.seq_num, byteorder="big"), ["FIN", "ACK"], get_empty_payload())
+	flags = utils.get_flags(CLIENT, ["FIN", "ACK"])
+	packet_to_send = packet.create_packet(CLIENT.seq_num, int.from_bytes(received_packet.seq_num, byteorder="big"), 
+		flags, utils.get_empty_payload(), utils.get_checksum(CLIENT, utils.get_empty_payload()))
 	CLIENT.socket.sendto(packet_to_send, CLIENT.address)
 
 def resend_data(CLIENT):
@@ -49,9 +44,16 @@ def add_packet_timer(CLIENT):
 	CLIENT_TRACKER[CLIENT.address][1] = Timer(4, resend_data, [CLIENT])
 	CLIENT_TRACKER[CLIENT.address][1].start()
 
+'''
+	FLAG PARSING
+'''
 def parse_data(CLIENT, sock, address, received_packet):
 	if received_packet.flags[NAK] == '1':
 		CLIENT_TRACKER[CLIENT.address][1].cancel()
+
+	if received_packet.flags[CHK] == '1' and utils.get_checksum(CLIENT, received_packet.payload) != int.from_bytes(received_packet.checksum, byteorder='big'):
+		# Invalid Checksum - ignore packet if CHK flag is enabled
+		return
 
 	if received_packet.flags[GET] == '1': # [GET]
 		data_handling.parse_file(CLIENT, received_packet)
@@ -73,7 +75,7 @@ while True:
 	if address in CLIENT_TRACKER:
 		CLIENT = CLIENT_TRACKER[address][0]
 	else:
-		CLIENT = packet.Client(received_packet, sock, address)
+		CLIENT = packet.Client(received_packet, sock, address, data[4:6], received_packet.needs_encryption)
 		CLIENT_TRACKER[address] = [CLIENT, None]
 
 

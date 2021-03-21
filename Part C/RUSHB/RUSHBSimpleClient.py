@@ -7,9 +7,15 @@ import time
 import random 
 
 
-RUSHB_TESTCLIENT_VERSION = "0.1"
+RUSHB_TESTCLIENT_VERSION = "1.1"
 '''
 0.1 - initial release
+0.2 - fix bug of encrypting
+0.3 - fix bug of bytes ordering
+0.4 - fix checksum mode
+0.5 - fix bug of encrypting in decoding
+1.0 - official sample client
+1.1 - update to match with the rep client
 '''
 
 LOCALHOST = "127.0.0.1"
@@ -30,15 +36,15 @@ RECV_MODE = "Received packet from"
 
 
 def str_to_int(string, pad=PAYLOAD_SIZE):
-    b_str = string.encode("UTF-8")
+    b_str = string
     if pad is not None:
         for i in range(len(string), pad):
             b_str += b'\0'
     return int.from_bytes(b_str, byteorder='big')
 
 
-def int_to_str(integer, size=PAYLOAD_SIZE):
-    return integer.to_bytes(size, byteorder='big').strip(b'\x00').decode("UTF-8")
+def int_to_bytes(integer, size=PAYLOAD_SIZE):
+    return integer.to_bytes(size, byteorder='big').rstrip(b'\x00')
 
 
 def carry_around_add(a, b):
@@ -47,9 +53,9 @@ def carry_around_add(a, b):
 
 
 def compute_checksum(message):
-    b_str = message.encode("UTF-8")
+    b_str = message
     if len(b_str) % 2 == 1:
-      b_str += b'\0'
+        b_str += b'\0'
     checksum = 0
     for i in range(0, len(b_str), 2):        
         w = b_str[i] + (b_str[i+1] << 8)
@@ -58,9 +64,9 @@ def compute_checksum(message):
 
 
 def encode(payload, key=ENC_KEY, n=MOD):
-    result = ""
+    result = b""
     for c in payload:
-        result += chr((ord(c) ** key) % n)
+        result += ((ord(c) ** key) % n).to_bytes(1, 'big')
     return result
 
 
@@ -106,9 +112,9 @@ class Connection:
                         note if self._debug_level != 9 else "")
         if self._debug_level in (3, 9):
             if not pkt.enc_flag:
-                output += "\n    Data: {}".format(repr(int_to_str(pkt.data)))
+                output += "\n    Data: {}".format(repr(int_to_bytes(pkt.data).decode("UTF-8")))
             else:
-                output += "\n    Data: {}".format("{is encrypted}")
+                output += "\n    Data: {}".format(repr(int_to_bytes(pkt.data)))
         self._output.write(output + "\n\n")
 
     def connect(self):
@@ -130,11 +136,10 @@ class Connection:
         self._chk_flag = 1
 
     def _send(self, pkt, mode, note, data='', key=ENC_KEY, checksum_error=""):
-        payload = encode(data, key) if self._enc_flag else data
-
+        payload = encode(data, key) if self._enc_flag else data.encode('ascii')
         pkt.data = str_to_int(payload)
-        pkt.checksum = compute_checksum(payload + checksum_error) if self._chk_flag else 0x0000
-
+        new_payload = payload + str.encode(checksum_error)
+        pkt.checksum = compute_checksum(new_payload) if self._chk_flag else 0x0000
         self._socket.sendto(raw(pkt), self._serv_info)
         self._print(pkt, self._serv_info[1], mode, note=note)
 
@@ -153,7 +158,8 @@ class Connection:
        
         assert self._chk_flag == pkt.chk_flag, "Checksum flag error:" + repr(pkt.chk_flag)
         assert self._enc_flag == pkt.enc_flag, "Encode flag error:" + repr(pkt.enc_flag)
-        assert (pkt.checksum == compute_checksum(int_to_str(pkt.data))) if self._chk_flag else (pkt.checksum == 0), "Checksum value error."
+        data = int_to_bytes(pkt.data)
+        assert (pkt.checksum == compute_checksum(data)) if self._chk_flag else (pkt.checksum == 0), "Checksum value error."
         return pkt, info
 
     def nak(self):
@@ -192,6 +198,8 @@ class Connection:
     def send_invalid_checksum_request(self):
         """Invalid because incorrect checksum value"""
         self.send_request(key=ENC_KEY, checksum_error="ERROR", note="[INVALID CHK GET]")
+        time.sleep(1)
+        self._seq_num = 1
 
     def send_invalid_encode_request(self):
         """Invalid because incorrect encode key value"""
@@ -247,7 +255,7 @@ CHECKSUM_MODE = [Connection.chk, Connection.send_request, Connection.run]
 ENCODED_CHECKSUM_MODE = [Connection.enc, Connection.chk, Connection.send_request, Connection.run]
 
 INVALID_ENCODE_VAL_MODE = [Connection.enc, Connection.send_invalid_encode_request, Connection.run]
-INVALID_CHECKSUM_VAL_MODE = [Connection.chk, Connection.send_invalid_checksum_request, Connection.run]
+INVALID_CHECKSUM_VAL_MODE = [Connection.chk, Connection.send_invalid_checksum_request, Connection.send_request, Connection.run]
 
 INVALID_ENCODE_FLAG_MODE = [Connection.enc, Connection.send_request, Connection.invalid_enc_flag, Connection.run]
 INVALID_CHECKSUM_FLAG_MODE = [Connection.chk, Connection.send_request, Connection.invalid_chk_flag, Connection.run]

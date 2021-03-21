@@ -24,8 +24,9 @@ def flag_sum(flags):
 		total += flag_nums[flag]
 	return total
 
-def create_packet(sequence_num, ack_num, flags, payload, checksum = 0):
+def create_packet(sequence_num, ack_num, flags, payload, checksum):
 	last_header = 2
+
 	packet = sequence_num.to_bytes(2, "big")
 	packet += ack_num.to_bytes(2, "big")
 
@@ -47,19 +48,21 @@ class Packet():
 		self.payload = data[8:]
 
 		self.needs_checksum = self.flags[CHK] == '1'
-		self.needs_encoded = self.flags[ENC] == '1'
+		self.needs_encryption = self.flags[ENC] == '1'
 
 
 class Client():
-	def __init__(self, last_packet, sock, address):
+	def __init__(self, last_packet, sock, address, checksum, requires_encryption):
 		self.remaining_payloads = [] # For get requests
 
 		self.last_packet = last_packet
 
+		self.seq_num = 1
+
+		self.requires_checksum = int.from_bytes(checksum, byteorder="big") != 0
+		self.requires_encryption = requires_encryption
 		self.address = address
 		self.socket = sock
-
-		self.seq_num = 1
 
 
 

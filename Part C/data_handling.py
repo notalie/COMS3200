@@ -4,6 +4,7 @@ import packet
 import numpy
 import math
 import sys, os
+import utils
 
 PAYLOAD_SIZE = 1463
 
@@ -17,12 +18,6 @@ DAT = 3
 FIN = 4
 CHK = 5
 ENC = 6
-
-def get_empty_payload():
-	empty_payload = bytearray()
-	while len(empty_payload) !=  PAYLOAD_SIZE + 1:
-		empty_payload.append(0)
-	return empty_payload
 
 def parse_file(CLIENT, received_packet):
 	seq_num = received_packet.seq_num
@@ -55,17 +50,23 @@ def parse_file(CLIENT, received_packet):
 		CLIENT.remaining_payloads = payload_data
 		payload = CLIENT.remaining_payloads.pop(0)
 
+		flags = utils.get_flags(CLIENT, ["DAT"])
+
 		# Send first payload
-		packet_to_send = packet.create_packet(int.from_bytes(seq_num, byteorder="big"), 0, ["DAT"], payload)
+		packet_to_send = packet.create_packet(int.from_bytes(seq_num, byteorder="big"), 0, 
+				flags, payload, utils.get_checksum(CLIENT, payload))
 		CLIENT.socket.sendto(packet_to_send, CLIENT.address)
 		CLIENT.last_packet = packet_to_send
 		CLIENT.seq_num += 1
 
 	except Exception as e:
-		# error - > just exit lol
-		t, o, tb = sys.exc_info()
-		frame = os.path.split(tb.tb_frame.f_code.co_filename)[1]
-		print(t, frame, tb.tb_lineno)
+		# End connection if file cannot be found
+		flags = utils.get_flags(CLIENT, ["FIN"])
+		packet_to_send = packet.create_packet(CLIENT.seq_num, 0, flags, utils.get_empty_payload(),
+			utils.get_checksum(CLIENT, utils.get_empty_payload()))
+		CLIENT.socket.sendto(packet_to_send, CLIENT.address)
+		CLIENT.last_packet = packet_to_send
+		CLIENT.seq_num += 1
 
 
 def send_data(CLIENT, data):
@@ -80,17 +81,19 @@ def send_data(CLIENT, data):
 
 	try:
 		payload = CLIENT.remaining_payloads.pop(0)
-
+		flags = utils.get_flags(CLIENT, ["DAT"])
 		# Send next payload only if the right variables are met
-		packet_to_send = packet.create_packet(CLIENT.seq_num, 0, ["DAT"], payload)
+		packet_to_send = packet.create_packet(CLIENT.seq_num, 0, flags, payload, 
+			utils.get_checksum(CLIENT, payload))
 		CLIENT.socket.sendto(packet_to_send, CLIENT.address)
 		CLIENT.last_packet = packet_to_send
 		CLIENT.seq_num += 1
 
-
 	except IndexError: # No more payload left to send
+		flags = utils.get_flags(CLIENT, ["FIN"])
 		# Return if all payloads have been sent
-		packet_to_send = packet.create_packet(CLIENT.seq_num, 0, ["FIN"], get_empty_payload())
+		packet_to_send = packet.create_packet(CLIENT.seq_num, 0, flags, utils.get_empty_payload(), 
+			utils.get_checksum(CLIENT, utils.get_empty_payload()))
 		CLIENT.socket.sendto(packet_to_send, CLIENT.address)
 		CLIENT.last_packet = packet_to_send
 		CLIENT.seq_num += 1
