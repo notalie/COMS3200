@@ -22,7 +22,7 @@ ENC = 6
 # Connect to socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 # TODO: change 53734 to 0
-sock.bind((LOCALHOST, 53734))                                     
+sock.bind((LOCALHOST, 0))                                     
 print(sock.getsockname()[1], flush=True)
 
 '''
@@ -33,8 +33,11 @@ CLIENT_TRACKER = {}
 
 def close_connection(CLIENT, received_packet):
 	flags = utils.get_flags(CLIENT, ["FIN", "ACK"])
+	payload = utils.get_encoded(CLIENT, utils.get_empty_payload())
+	checksum = utils.get_checksum(CLIENT, utils.get_empty_payload())
+
 	packet_to_send = packet.create_packet(CLIENT.seq_num, int.from_bytes(received_packet.seq_num, byteorder="big"), 
-		flags, utils.get_empty_payload(), utils.get_checksum(CLIENT, utils.get_empty_payload()))
+		flags, payload, checksum)
 	CLIENT.socket.sendto(packet_to_send, CLIENT.address)
 
 def resend_data(CLIENT):
@@ -54,6 +57,13 @@ def parse_data(CLIENT, sock, address, received_packet):
 	if received_packet.flags[CHK] == '1' and utils.get_checksum(CLIENT, received_packet.payload) != int.from_bytes(received_packet.checksum, byteorder='big'):
 		# Invalid Checksum - ignore packet if CHK flag is enabled
 		return
+	elif int.from_bytes(received_packet.checksum, byteorder='big') != 0 and received_packet.flags[CHK] != '1':
+		# Checksum value but flag not enabled
+		return 
+
+	# Decrypt payload here after checksum
+	if received_packet.needs_encryption:
+		received_packet.payload = utils.decode(received_packet.payload)    
 
 	if received_packet.flags[GET] == '1': # [GET]
 		data_handling.parse_file(CLIENT, received_packet)
@@ -77,7 +87,6 @@ while True:
 	else:
 		CLIENT = packet.Client(received_packet, sock, address, data[4:6], received_packet.needs_encryption)
 		CLIENT_TRACKER[address] = [CLIENT, None]
-
 
 	# 8th byte is not equal to 2
 	if received_packet.header_correct == False:

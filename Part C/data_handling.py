@@ -24,9 +24,13 @@ def parse_file(CLIENT, received_packet):
 	ack_num = received_packet.ack_num
 	payload = received_packet.payload
 
-	decoded_payload = payload.decode("utf-8").replace('\x00', '')
+	if not received_packet.needs_encryption:
+		payload = payload.decode("utf-8").replace('\x00', '')
+	else:
+		payload = payload.replace('\x00', '')
+
 	try:
-		file = open(decoded_payload, "rb") # Read all bytes in file
+		file = open(payload, "rb") # Read all bytes in file
 		file_data = file.readlines()
 		file.close()
 
@@ -51,19 +55,22 @@ def parse_file(CLIENT, received_packet):
 		payload = CLIENT.remaining_payloads.pop(0)
 
 		flags = utils.get_flags(CLIENT, ["DAT"])
-
+		payload = utils.get_encoded(CLIENT, payload)
+		checksum = utils.get_checksum(CLIENT, payload)
 		# Send first payload
 		packet_to_send = packet.create_packet(int.from_bytes(seq_num, byteorder="big"), 0, 
-				flags, payload, utils.get_checksum(CLIENT, payload))
+				flags, payload, checksum)
 		CLIENT.socket.sendto(packet_to_send, CLIENT.address)
+
 		CLIENT.last_packet = packet_to_send
 		CLIENT.seq_num += 1
 
-	except Exception as e:
-		# End connection if file cannot be found
+	except Exception as e: # End connection if file cannot be found
+		payload = utils.get_encoded(CLIENT, utils.get_empty_payload())
+		checksum = utils.get_checksum(CLIENT, utils.get_empty_payload())
+
 		flags = utils.get_flags(CLIENT, ["FIN"])
-		packet_to_send = packet.create_packet(CLIENT.seq_num, 0, flags, utils.get_empty_payload(),
-			utils.get_checksum(CLIENT, utils.get_empty_payload()))
+		packet_to_send = packet.create_packet(CLIENT.seq_num, 0, flags, payload, checksum)
 		CLIENT.socket.sendto(packet_to_send, CLIENT.address)
 		CLIENT.last_packet = packet_to_send
 		CLIENT.seq_num += 1
@@ -72,19 +79,23 @@ def parse_file(CLIENT, received_packet):
 def send_data(CLIENT, data):
 
 	# Because we have an ACK, check that the payload is empty
-	if int.from_bytes(data.payload, byteorder="big") != 0:
+	if CLIENT.requires_encryption and not utils.check_empty_payload(data.payload):
+		return 
+	elif not CLIENT.requires_encryption and int.from_bytes(data.payload, byteorder="big") != 0:
 		return
 
 	# Check that ACK num == pre_seq_num
 	if data.flags[ACK] != '1' or data.ack_num != CLIENT.last_packet[0:2] or data.flags[DAT] != '1':
 		return
 
-	try:
+	try: # Send next payload only if the right variables are met
 		payload = CLIENT.remaining_payloads.pop(0)
 		flags = utils.get_flags(CLIENT, ["DAT"])
-		# Send next payload only if the right variables are met
-		packet_to_send = packet.create_packet(CLIENT.seq_num, 0, flags, payload, 
-			utils.get_checksum(CLIENT, payload))
+
+		payload = utils.get_encoded(CLIENT, payload)
+		checksum = utils.get_checksum(CLIENT, payload)
+
+		packet_to_send = packet.create_packet(CLIENT.seq_num, 0, flags, payload, checksum)
 		CLIENT.socket.sendto(packet_to_send, CLIENT.address)
 		CLIENT.last_packet = packet_to_send
 		CLIENT.seq_num += 1
@@ -92,8 +103,10 @@ def send_data(CLIENT, data):
 	except IndexError: # No more payload left to send
 		flags = utils.get_flags(CLIENT, ["FIN"])
 		# Return if all payloads have been sent
-		packet_to_send = packet.create_packet(CLIENT.seq_num, 0, flags, utils.get_empty_payload(), 
-			utils.get_checksum(CLIENT, utils.get_empty_payload()))
+		payload = utils.get_encoded(CLIENT, utils.get_empty_payload())
+		checksum = utils.get_checksum(CLIENT, utils.get_empty_payload())
+
+		packet_to_send = packet.create_packet(CLIENT.seq_num, 0, flags, payload, checksum)
 		CLIENT.socket.sendto(packet_to_send, CLIENT.address)
 		CLIENT.last_packet = packet_to_send
 		CLIENT.seq_num += 1
