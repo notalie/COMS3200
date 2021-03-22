@@ -22,7 +22,7 @@ ENC = 6
 # Connect to socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 # TODO: change 53734 to 0
-sock.bind((LOCALHOST, 0))                                     
+sock.bind((LOCALHOST, 53734))                                     
 print(sock.getsockname()[1], flush=True)
 
 '''
@@ -66,15 +66,24 @@ def parse_data(CLIENT, sock, address, received_packet):
 		received_packet.payload = utils.decode(received_packet.payload)    
 
 	if received_packet.flags[GET] == '1': # [GET]
-		data_handling.parse_file(CLIENT, received_packet)
+		if len(CLIENT.remaining_payloads) != 0:
+			CLIENT.client_seq_num -= 1
+			CLIENT_TRACKER[CLIENT.address][1].cancel() # Cancel and reset send timer
+		else:
+			data_handling.parse_file(CLIENT, received_packet)
 	elif received_packet.flags[DAT] == '1' and received_packet.flags[ACK] == '1': # [DAT/ACK]
 		data_sent = data_handling.send_data(CLIENT, received_packet)
+		if data_sent == False:
+			CLIENT.client_seq_num -= 1
+			CLIENT_TRACKER[CLIENT.address][1].cancel() # Cancel and reset send timer
+
 	elif received_packet.flags[FIN] == '1' and received_packet.flags[ACK] == '1': # [FIN/ACK]
 		close_connection(CLIENT, received_packet)
 	elif received_packet.flags[NAK] == '1':
 		resend_data(CLIENT)
 	else: # No flags/bad - to do for checking later
-		print('none of these')
+		CLIENT.client_seq_num -= 1
+		CLIENT_TRACKER[CLIENT.address][1].cancel() # Cancel and reset send timer
 
 	add_packet_timer(CLIENT)
 
@@ -88,12 +97,20 @@ while True:
 		CLIENT = packet.Client(received_packet, sock, address, data[4:6], received_packet.needs_encryption)
 		CLIENT_TRACKER[address] = [CLIENT, None]
 
-	# 8th byte is not equal to 2
-	if received_packet.header_correct == False:
-		finish_connection(CLIENT.seq_num, CLIENT.ack_num, sock, address)
-	else:
-		parse_data(CLIENT, sock, address, received_packet)
+	# Check sequence number is right
+	if int.from_bytes(received_packet.seq_num, byteorder="big") == CLIENT.client_seq_num + 1:
+		CLIENT.client_seq_num += 1
+	elif received_packet.header_correct == False:
+		# Sequence number is wrong or flags are wrong
+		CLIENT_TRACKER[CLIENT.address][1].cancel()
+		add_packet_timer(CLIENT)
+		continue
+	elif not received_packet.header_correct:
+		# 8th byte is not equal to 2
+		CLIENT_TRACKER[CLIENT.address][1].cancel()
+		add_packet_timer(CLIENT)
+		continue
+
+	parse_data(CLIENT, sock, address, received_packet)
 
 	
-
-

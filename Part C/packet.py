@@ -58,6 +58,7 @@ class Client():
 		self.last_packet = last_packet
 
 		self.seq_num = 1
+		self.client_seq_num = 0
 
 		self.requires_checksum = int.from_bytes(checksum, byteorder="big") != 0
 		self.requires_encryption = requires_encryption

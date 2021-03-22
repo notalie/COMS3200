@@ -61,7 +61,6 @@ def parse_file(CLIENT, received_packet):
 		packet_to_send = packet.create_packet(int.from_bytes(seq_num, byteorder="big"), 0, 
 				flags, payload, checksum)
 		CLIENT.socket.sendto(packet_to_send, CLIENT.address)
-
 		CLIENT.last_packet = packet_to_send
 		CLIENT.seq_num += 1
 
@@ -76,17 +75,18 @@ def parse_file(CLIENT, received_packet):
 		CLIENT.seq_num += 1
 
 
+
 def send_data(CLIENT, data):
 
 	# Because we have an ACK, check that the payload is empty
 	if CLIENT.requires_encryption and not utils.check_empty_payload(data.payload):
-		return 
+		return False
 	elif not CLIENT.requires_encryption and int.from_bytes(data.payload, byteorder="big") != 0:
-		return
+		return False
 
-	# Check that ACK num == pre_seq_num
-	if data.flags[ACK] != '1' or data.ack_num != CLIENT.last_packet[0:2] or data.flags[DAT] != '1':
-		return
+	# Check that ACK num == last packet sent sequence number
+	if data.ack_num != CLIENT.last_packet[0:2]:
+		return False
 
 	try: # Send next payload only if the right variables are met
 		payload = CLIENT.remaining_payloads.pop(0)
