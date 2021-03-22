@@ -22,7 +22,7 @@ ENC = 6
 # Connect to socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 # TODO: change 53734 to 0
-sock.bind((LOCALHOST, 53734))                                     
+sock.bind((LOCALHOST, 0))                                     
 print(sock.getsockname()[1], flush=True)
 
 '''
@@ -100,7 +100,7 @@ while True:
 	# Check sequence number is right
 	if int.from_bytes(received_packet.seq_num, byteorder="big") == CLIENT.client_seq_num + 1:
 		CLIENT.client_seq_num += 1
-	elif received_packet.header_correct == False:
+	elif int.from_bytes(received_packet.seq_num, byteorder="big") != CLIENT.client_seq_num + 1:
 		# Sequence number is wrong or flags are wrong
 		CLIENT_TRACKER[CLIENT.address][1].cancel()
 		add_packet_timer(CLIENT)
