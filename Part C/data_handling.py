@@ -6,7 +6,7 @@ import math
 import sys, os
 import utils
 
-PAYLOAD_SIZE = 1463
+PAYLOAD_SIZE = 1464
 
 FLAGS = 6
 LAST_BYTE = 7
@@ -39,13 +39,13 @@ def parse_file(CLIENT, received_packet):
 
 		# Split data into small enough bytes for sending over multiple packets
 		for i in range(0, len(file_data[0])):
-			current_payload.append(file_data[0][i])
 			if (i % PAYLOAD_SIZE == 0 and i != 0):
 				payload_data.append(current_payload)
 				current_payload = bytearray()
+			current_payload.append(file_data[0][i])
 
 		# Padding with 0s
-		while len(current_payload) != PAYLOAD_SIZE + 1:
+		while len(current_payload) != PAYLOAD_SIZE:
 			current_payload.append(0)
 
 		payload_data.append(current_payload)
@@ -96,6 +96,11 @@ def send_data(CLIENT, data):
 		checksum = utils.get_checksum(CLIENT, payload)
 
 		packet_to_send = packet.create_packet(CLIENT.seq_num, 0, flags, payload, checksum)
+		
+		while len(packet_to_send) < 1472: # When the packet is small
+			padding = 0
+			packet_to_send += padding.to_bytes(1, 'big') 
+		
 		CLIENT.socket.sendto(packet_to_send, CLIENT.address)
 		CLIENT.last_packet = packet_to_send
 		CLIENT.seq_num += 1

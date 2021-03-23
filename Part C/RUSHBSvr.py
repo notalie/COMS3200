@@ -56,9 +56,11 @@ def parse_data(CLIENT, sock, address, received_packet):
 
 	if received_packet.flags[CHK] == '1' and utils.get_checksum(CLIENT, received_packet.payload) != int.from_bytes(received_packet.checksum, byteorder='big'):
 		# Invalid Checksum - ignore packet if CHK flag is enabled
+		CLIENT.client_seq_num -= 1
 		return
 	elif int.from_bytes(received_packet.checksum, byteorder='big') != 0 and received_packet.flags[CHK] != '1':
 		# Checksum value but flag not enabled
+		CLIENT.client_seq_num -= 1
 		return 
 
 	# Decrypt payload here after checksum
