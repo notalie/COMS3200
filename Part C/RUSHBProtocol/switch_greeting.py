@@ -35,9 +35,9 @@ def is_request_valid(data, current_switch, ASSIGNED_IP):
 		return False
 	elif socket.inet_ntoa(data[0:4]) != EMPTY_IP:
 		return False
-	elif socket.inet_ntoa(data[4:8]) != current_switch.local_ip:
+	elif current_switch.is_local == True and current_switch.is_global == False and socket.inet_ntoa(data[4:8]) != current_switch.local_ip:
 		return False
-	elif data[11] != REQUEST:
+	elif current_switch.is_global == True and current_switch.is_local == False and socket.inet_ntoa(data[4:8]) != current_switch.global_ip:
 		return False
 	elif int.from_bytes(data[8:11], "big") != 0:
 		return False
@@ -91,38 +91,40 @@ def greeting_protocol_receive(data, current_switch):
 
 # ------------------ DISCOVERY FROM SWITCH
 
-def greeting_protocol_receive_switch(data, current_switch):
+def greeting_protocol_receive_switch(data, current_switch, port, conn):
 	while True:
 		if is_discovery_valid(data, current_switch) == False:
-			data = current_switch.global_sock.recvfrom(RECVSIZE)
+			data = conn.recvfrom(RECVSIZE)
 		else:
 			break
-	
-	port = data[1][1]
 
 	# Send OFFER packet (src_ip, dest_ip, mode, assigned_ip, data):
 	ASSIGNED_IP = current_switch.get_next_global_ip()
 	packet = utils.create_adapter_packet(current_switch.global_ip, EMPTY_IP, OFFER, ASSIGNED_IP, None)
-	current_switch.global_sock.sendto(packet, (LOCALHOST, port))
+	conn.sendto(packet, (LOCALHOST, port))
 
 	# Receive REQUEST
-	data = current_switch.global_sock.recvfrom(RECVSIZE)
+	data = conn.recvfrom(RECVSIZE)
 	while True:
 		if is_request_valid(data[0], current_switch, ASSIGNED_IP) == False:
-			data = current_switch.global_sock.recvfrom(RECVSIZE)
+			data = conn.recvfrom(RECVSIZE)
 		else:
 			break
 
+	# Send ACK packet
 	packet = utils.create_adapter_packet(current_switch.global_ip, ASSIGNED_IP, ACKNOWLEDGE, ASSIGNED_IP, None)
-	current_switch.global_sock.sendto(packet, (LOCALHOST, port))
+	conn.sendto(packet, (LOCALHOST, port))
 
-	current_switch.add_switch(packet, port)
+	packet = utils.create_adapter_packet(ASSIGNED_IP, current_switch.global_ip, ACKNOWLEDGE, ASSIGNED_IP, None)
+	current_switch.add_switch(packet, port, conn)
 
 	added_switch = current_switch.connected_switches[-1]
 
 	# Send Location packet after a successful connection
-	packet = utils.create_switch_packet(added_switch.my_ip, added_switch.src_ip, LOCATION, current_switch.x_pos, current_switch.y_pos)
-	current_switch.global_sock.sendto(packet, (LOCALHOST, port))
+	packet = utils.create_switch_packet(added_switch.my_ip, added_switch.src_ip, LOCATION, int(current_switch.x_pos), int(current_switch.y_pos))
+	conn.sendto(packet, (LOCALHOST, port))
+
+	return ASSIGNED_IP
 
 
 

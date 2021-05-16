@@ -20,6 +20,9 @@ MORE_FRAG = 0x0a
 END_FRAG = 0x0b
 INVALID = 0x00
 
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
+
 def get_zeroes():
     zero = 0
     return zero.to_bytes(3, "big")
@@ -41,7 +44,8 @@ def int_to_ip(addr):
     return socket.inet_ntoa(struct.pack("!I", addr))
 
 def create_adapter_packet(src_ip, dest_ip, mode, assigned_ip, data):
-    if mode == DISCOVERY or mode == REQUEST: # Part of Greeting Protocol
+    # Part of Greeting Protocol - also used by the switch for greetings
+    if mode == DISCOVERY or mode == REQUEST or mode == OFFER or mode == ACKNOWLEDGE:
         packet = socket.inet_aton(src_ip)
         packet += socket.inet_aton(dest_ip)
         packet += get_zeroes()
@@ -54,7 +58,6 @@ def create_adapter_packet(src_ip, dest_ip, mode, assigned_ip, data):
         packet += get_zeroes()
         packet += mode.to_bytes(1, "big")
         return packet
-        pass
     elif mode == DATA: # Commandline interface
         packet = socket.inet_aton(src_ip)
         packet += socket.inet_aton(dest_ip)
@@ -62,4 +65,38 @@ def create_adapter_packet(src_ip, dest_ip, mode, assigned_ip, data):
         packet += mode.to_bytes(1, "big")
         packet += data.strip('"').encode('utf-8')
         return packet
+
+def create_switch_packet(src_ip, dest_ip, mode, x, y):
+    # x - target IP
+    # y - distance 
+    if mode == LOCATION:
+        x = int(x)
+        y = int(y)
+        packet = socket.inet_aton(src_ip)
+        packet += socket.inet_aton(dest_ip)
+        packet += get_zeroes()
+        packet += mode.to_bytes(1, "big")
+        packet += x.to_bytes(2, "big")
+        packet += y.to_bytes(2, "big")
+        return packet
+    elif mode == DISTANCE:
+        packet = socket.inet_aton(src_ip)
+        packet += socket.inet_aton(dest_ip)
+        packet += get_zeroes()
+        packet += mode.to_bytes(1, "big")
+        packet += socket.inet_aton(x)
+        packet += y.to_bytes(4, "big")
+        return packet
+    elif mode == QUERY:
+        packet = socket.inet_aton(src_ip)
+        packet += socket.inet_aton(dest_ip)
+        packet += get_zeroes()
+        packet += mode.to_bytes(1, "big")
+        return packet
+
+
+
+
+
+
 

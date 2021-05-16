@@ -31,8 +31,38 @@ RECVSIZE = 1024
 # /x : num hosts
 CIDR_CONVERSION = {
 	'32':1,
-	'24': 256,
-	'16':65536
+	'31':0,
+	'30':2,
+	'29':6,
+	'28':14,
+	'27':30,
+	'26':62,
+	'25':126,
+	'24':252,
+	'23':510,
+	'22':1022,
+	'21':2046,
+	'20':4094,
+	'19':8190,
+	'18':16382,
+	'17':32766,
+	'16':65534,
+	'15':131070,
+	'14':262142,
+	'13':524286,
+	'12':1048574,
+	'11':2097150,
+	'10':4194302,
+	'9':388606,
+	'8':16777214,
+	'7':33554430,
+	'6':67108862,
+	'5':134217726,
+	'4':268435454,
+	'3':536870910,
+	'2':1073741822,
+	'1':2147483646,
+	'0':4294967294
 }
 
 def eprint(*args, **kwargs):
@@ -80,9 +110,6 @@ def parse_data_packet(data, current_switch):
 		closest_switch = None
 
 		for switch in current_switch.connected_switches:
-			eprint(switch)
-			eprint(switch.distance_map)
-
 			if dst_ip in switch.distance_map:
 				chosen_switches.append(switch)
 
@@ -92,9 +119,15 @@ def parse_data_packet(data, current_switch):
 			elif closest_switch.distance_map[dst_ip] > switch.distance_map[dst_ip]:
 				closest_switch = switch
 
-		# Wasn't able to find the connecting switch, use prefix TODO later
+		# Wasn't able to find the connecting switch, use prefix
 		if closest_switch == None:
-			return
+			closest_switch = switch_connection.get_closest_ip(current_switch, dst_ip)
+
+		# Add switches src_ip[src_ip] = really high number to show that it's connected but no idea how large, it will change
+		for switch in current_switch.connected_switches:
+			if current_switch.last_received_ip != None and switch.src_ip == current_switch.last_received_ip and src_ip not in switch.distance_map:
+				switch.distance_map[src_ip] = 1001 # MAX DISTANCE - shouldn't be possible etc
+				break
 
 		# Save packet
 		closest_switch.lastest_packet = utils.create_adapter_packet(src_ip, dst_ip, DATA, None, data[0][12:].decode('utf-8'))
@@ -105,6 +138,8 @@ def parse_data_packet(data, current_switch):
 		else: # has been verified lately
 			closest_switch.sock.sendto(closest_switch.lastest_packet, (LOCALHOST, closest_switch.port))
 			closest_switch.lastest_packet = None
+
+		current_switch.last_received_ip = None
 	else: # Fragmentation
 		pass
 
@@ -120,22 +155,64 @@ def parse_data(data, current_switch):
 		parse_data_packet(data, current_switch)
 
 # ----------- Data between a switch and a switch (TCP open to begin with) ------
-def parse_switch_data(data, current_switch):
+def parse_switch_data(data, current_switch, port, conn):
+	if len(data[0]) == 0:
+		return
 	if data[0][11] == DISCOVERY:
+		max_total = 0
 		# Check if adding the switch are at the CIDR limit, +1 for the host
-		if len(current_switch.connected_adapters) + 1 == CIDR_CONVERSION[current_switch.max_local_ips]:
+		if len(current_switch.connected_adapters) + 1 == CIDR_CONVERSION[current_switch.max_global_ips]:
 			pass
 		else: # You can connect switch
-			switch_greeting.greeting_protocol_receive_switch(data, current_switch)
+			target_ip = switch_greeting.greeting_protocol_receive_switch(data, current_switch, port, conn)
+
+			latest_switch = current_switch.connected_switches[-1]
+
+			# Receive Location from the switch we just connected to 
+			data = conn.recvfrom(RECVSIZE)
+
+			current_switch.update_distance(switch_connection.calculate_distance(data[0], current_switch))
+			latest_switch.update_distance(switch_connection.calculate_distance(data[0], current_switch))
+
+			if current_switch.is_local == True and current_switch.is_global == True:
+				for switch in current_switch.connected_switches:
+					packet = utils.create_switch_packet(switch.my_ip, switch.src_ip, DISTANCE, current_switch.local_ip, int(current_switch.distance))
+					switch.sock.sendto(packet, (LOCALHOST, switch.port))
 
 			# Send updated data to all connected switches
 			for switch in current_switch.connected_switches:
-				packet = utils.create_switch_packet(switch.my_ip, switch.src_ip, DISTANCE, current_switch.x_pos, current_switch.y_pos)
-				switch.sock.sendto(packet, (LOCALHOST, switch.port))
+				if switch.src_ip != latest_switch.src_ip:
+					packet = utils.create_switch_packet(switch.my_ip, switch.src_ip, DISTANCE, target_ip, latest_switch.distance)
+					switch.sock.sendto(packet, (LOCALHOST, switch.port))
 	elif data[0][11] == DATA:
 		parse_data_packet(data, current_switch)
 	elif data[0][11] == LOCATION or DISTANCE:
-		switch_connection.parse_data(data, current_switch)
+		switch_connection.parse_data(data[0], current_switch)
+	
+	elif data[0][11] == QUERY:
+		chosen_switch = None
+		src_ip = socket.inet_ntoa(data[0][0:4])
+		dst_ip = socket.inet_ntoa(data[0][4:8])
+
+		for switch in current_switch.connected_switches:
+			if switch.src_ip == src_ip:
+				chosen_switch = switch
+				break
+
+		# Send an available to the query
+		# Create Available packet (dst_ip, src_ip, AVAILABLE, EMPTY_IP, None)
+		packet = utils.create_adapter_packet(EMPTY_IP, EMPTY_IP, AVAILABLE, EMPTY_IP, None)
+		chosen_switch.sock.sendto(packet, (LOCALHOST, chosen_switch.port)) 
+
+		# set the switch that sent it to be verified == True
+		chosen_switch.verified = True
+		if chosen_switch.verified_function != None:
+			chosen_switch.verified_function.cancel()
+
+		chosen_switch.verified_function = threading.Timer(5, toggle_verified, [chosen_switch])
+		chosen_switch.verified_function.start()
+
+		current_switch.last_received_ip = chosen_switch.src_ip
 
 # ------------- CLASSES -------------
 class Switch():
@@ -150,6 +227,8 @@ class Switch():
 		self.distance_map = {}
 		self.distance = 0
 		self.global_sock = None
+
+		self.last_received_ip = None
 
 	def set_global_info(self, global_info):
 		self.global_info = global_info.split("/")
@@ -173,6 +252,7 @@ class Switch():
 		if self.is_global == True: # TCP Ports
 			self.global_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  
 			self.global_sock.bind((LOCALHOST, 0))   
+			self.global_sock.listen()
 			self.global_port = self.global_sock.getsockname()[1]
 			print(self.global_port, flush=True)
 

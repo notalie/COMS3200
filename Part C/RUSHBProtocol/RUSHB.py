@@ -1,6 +1,7 @@
 from scapy.all import raw, struct
 from scapy.fields import BitField, StrLenField
 from scapy.packet import Packet
+from pathlib import Path
 
 import socket
 import sys
@@ -8,10 +9,16 @@ import traceback
 import os.path
 import time
 
-RUSHB_PROTOCOL_VERSION = "0.1"
+RUSHB_PROTOCOL_VERSION = "0.4"
+"""
+0.1 - Initial release
+0.2 - Add *out file and fix bugs
+0.3 - Add sleep for sending message
+0.4 - Add new tests
+0.5 - Fix new tests
+"""
 
 LOCAL_HOST = "127.0.0.1"
-HELLO_WORLD = ("Hello World", 11)
 RECV_SIZE = 4096
 TIME_OUT = 5
 
@@ -61,7 +68,7 @@ class RUSHLocation(RUSH):
     ]
 
 
-class RUSHDistance(RUSHIp):
+class RUSHDistance(RUSH):
     name = "RUSH_DISTANCE"
     fields_desc = [
         BitField("target_ip", 0, 32),
@@ -95,7 +102,6 @@ def build_packet(source_ip, destination_ip, offset, mode, misc=None):
             t_ip = ip_to_int(misc)
             additional = RUSHIp(ip=t_ip)
         elif mode in (DATA, MORE_FRAG, END_FRAG, INVALID):
-            # additional = raw(RUSHData(data=misc))
             additional = misc.encode('utf-8')
         elif mode == LOCATION:
             additional = RUSHLocation(x=misc[0], y=misc[1])
@@ -153,6 +159,7 @@ class Connection:
         self._output = output
 
     def _send(self, pkt, additional, sock, target_info=None, print_out=False, extend_message=""):
+        time.sleep(0.2)
         try:
             message = raw(pkt)
             if additional is not None:
@@ -218,7 +225,7 @@ class Connection:
             sock.close()
 
     def adapter_greeting(self, additional_message=""):
-        # this test will stimulate a switch, user will execute the adapter and connect to the given port, user executes the adapter
+        # this test stimulates a switch, user execute the adapter and connect to the given port
         # the map of the connection:
         #
         #            [A] ----------------------> [T]
@@ -227,12 +234,12 @@ class Connection:
         # [A] -> [T]
         # run the test using: python3 RUSHB.py -m ADAPTER_GREETING -o ADAPTER_GREETING.bout
         # check output using: diff ADAPTER_GREETING.bout test_files/ADAPTER_GREETING.bout
-        sock = new_udp_socket(62679) #TODO - change back later
+        sock = new_udp_socket(0)
         self._my_sockets.append(sock)
         port = str(sock.getsockname()[1])
         sys.stdout.write(port + "\n")
         sys.stdout.flush()
-        sys.stderr.write(f"New UDP port opened, run your adapter with these argument:\n\tpython3 RUSHBAdapter.py {port}{additional_message}\n")
+        sys.stderr.write(f"New UDP port opened, run your adapter with these argument:\n\t[./RUSHBAdapter | java RUSHBAdapter | python3 RUSHBAdapter.py] {port}{additional_message}\n")
         sys.stderr.flush()
         data, add, info = self._recv(sock, print_out=True)
         pkt, add = build_packet(source_ip="192.168.1.1", destination_ip="0.0.0.0", offset=0x000000, mode=OFFER, misc="192.168.1.2")
@@ -243,7 +250,7 @@ class Connection:
         return sock, info
 
     def adapter_sending(self):
-        # this test will stimulate a switch, establish the protocol as same as in adapter_greeting
+        # this test stimulates a switch, establish the protocol as same as in adapter_greeting
         # then ask the adapter to send the input, using < test_files/ADAPTER_SENDING.ain
         # the map of the connection:
         #
@@ -258,8 +265,8 @@ class Connection:
         return sock, info
 
     def adapter_receiving(self):
-        # this test will stimulate a switch, establish the protocol as same as in adapter_greeting
-        # the switch then sends a 0x05 message to the adapter
+        # this test stimulates a switch, establish the protocol as same as in adapter_greeting
+        # the switch then sends a 0x05 message to the adapter, but will make a query protocol before sending it
         # the map of the connection:
         #
         #            [A] ----------------------> [T]
@@ -277,18 +284,21 @@ class Connection:
         self._send(pkt, add, sock, target_info=info, print_out=True)
 
     def adapter_fragmentation(self):
-        # this test will stimulate a switch, establish the protocol as same as in adapter_greeting, user executes the adapter
-        # the switch then sends 0x0a and 0x0b messages to the adapter
+        # this test stimulates a switch, establish the protocol as same as in ADAPTER_GREETING, user executes the adapter
+        # the switch then sends 0x0a and 0x0b messages to the adapter after the query protocols
         # the map of the connection:
         #
         #            [A] ----------------------> [T]
         #         ./RUSHBAdapter           Switch Stimulator
         #
         # [A] -> [T]
-        # run the test using: python3 RUSHB.py -m ADAPTER_RECEIVING -o ADAPTER_RECEIVING.bout
+        # run the test using: python3 RUSHB.py -m ADAPTER_FRAGMENTATION -o ADAPTER_FRAGMENTATION.bout
         # check output using: diff ADAPTER_FRAGMENTATION.bout test_files/ADAPTER_FRAGMENTATION.bout
         #                     diff ADAPTER_FRAGMENTATION.aout test_files/ADAPTER_FRAGMENTATION.aout
         sock, info = self.adapter_greeting(additional_message=" > ADAPTER_FRAGMENTATION.aout")
+        pkt, add = build_packet(source_ip="192.168.1.1", destination_ip="192.168.1.2", offset=0x000000, mode=QUERY)
+        self._send(pkt, add, sock, target_info=info, print_out=True)
+        self._recv(sock, print_out=True)
         pkt, add = build_packet(source_ip="192.168.1.1", destination_ip="192.168.1.2", offset=0x000000, mode=MORE_FRAG, misc="a"*1488)
         self._send(pkt, add, sock, target_info=info, print_out=True)
         pkt, add = build_packet(source_ip="192.168.1.1", destination_ip="192.168.1.2", offset=0x0005d0, mode=MORE_FRAG, misc="b" * 1488)
@@ -297,8 +307,8 @@ class Connection:
         self._send(pkt, add, sock, target_info=info, print_out=True)
 
     def adapter_wrong_receive(self):
-        # this test will stimulate a switch, establish the protocol as same as in adapter_greeting, user executes the adapter
-        # the switch then sends a 0x05 message to the adapter but the query is wrong
+        # this test stimulates a switch, establish the protocol as same as in ADAPTER_GREETING, user executes the adapter
+        # the switch then sends a 0x05 message to the adapter but the query protocol is somehow wrong
         # the map of the connection:
         #
         #            [A] ----------------------> [T]
@@ -318,8 +328,8 @@ class Connection:
                                 misc="HELLO WORLD")
         self._send(pkt, add, sock, target_info=info, print_out=True)
 
-    def switch_greeting_adapter(self):
-        # this test will stimulate an adapter that sending greeting protocols to the target switch, user executes the switch
+    def switch_greeting_adapter(self, modified_test_name="SWITCH_GREETING_ADAPTER"):
+        # this test stimulates an adapter that sending greeting protocols to the target switch, user executes the switch
         # the switch has an IP address of 192.168.1.1/24 run in local mode
         # the map of the connection:
         #
@@ -329,11 +339,10 @@ class Connection:
         # [A] -> [T]
         # run the test using: python3 RUSHB.py -m SWITCH_GREETING_ADAPTER -o SWITCH_GREETING_ADAPTER.aout
         # check output using: diff SWITCH_GREETING_ADAPTER.aout test_files/SWITCH_GREETING_ADAPTER.aout
-        #                     diff SWITCH_GREETING_ADAPTER.bout test_files/SWITCH_GREETING_ADAPTER.bout
+        file_path = f"./{modified_test_name}.bout"
         sys.stderr.write(
-            f"Run your switch with these argument:\n\t[./RUSHBSwitch | java RUSHBSwitch | python3 RUSHBSwitch.py] local 192.168.1.1/24 0 2 > SWITCH_GREETING_ADAPTER.bout\n")
+            f"Run your switch with these argument:\n\t[./RUSHBSwitch | java RUSHBSwitch | python3 RUSHBSwitch.py] local 192.168.1.1/24 0 2 > {modified_test_name}.bout\n")
         sys.stderr.flush()
-        file_path = "./SWITCH_GREETING_ADAPTER.bout"
         info = get_info_file(file_path)
         sock = new_udp_socket(0)
         self._my_sockets.append(sock)
@@ -341,6 +350,30 @@ class Connection:
         self._send(pkt, add, sock, target_info=info, print_out=True)
         self._recv(sock, print_out=True)
         pkt, add = build_packet(source_ip="0.0.0.0", destination_ip="192.168.1.1", offset=0x000000, mode=REQUEST, misc="192.168.1.2")
+        self._send(pkt, add, sock, target_info=info, print_out=True)
+        self._recv(sock, print_out=True)
+        return sock, info
+
+    def switch_multi_adapter(self):
+        # this test stimulates 2 adapters connecting to the target switch, user executes the switch
+        # the switch has an IP address of 192.168.1.1/24 run in local mode
+        # the map of the connection:
+        #
+        #            [A] ----------------------> [T]
+        #     Adapter Stimulator x2         ./RUSHBSwitch
+        #
+        # [A] -> [T]
+        # run the test using: python3 RUSHB.py -m SWITCH_MULTI_ADAPTER -o SWITCH_MULTI_ADAPTER.aout
+        # check output using: diff SWITCH_MULTI_ADAPTER.aout test_files/SWITCH_MULTI_ADAPTER.aout
+        sock, info = self.switch_greeting_adapter(modified_test_name="SWITCH_MULTI_ADAPTER")
+        sock = new_udp_socket(0)
+        self._my_sockets.append(sock)
+        pkt, add = build_packet(source_ip="0.0.0.0", destination_ip="0.0.0.0", offset=0x000000, mode=DISCOVERY,
+                                misc="0.0.0.0")
+        self._send(pkt, add, sock, target_info=info, print_out=True)
+        self._recv(sock, print_out=True)
+        pkt, add = build_packet(source_ip="0.0.0.0", destination_ip="192.168.1.1", offset=0x000000, mode=REQUEST,
+                                misc="192.168.1.3")
         self._send(pkt, add, sock, target_info=info, print_out=True)
         self._recv(sock, print_out=True)
 
@@ -359,8 +392,144 @@ class Connection:
             traceback.print_exc(file=sys.stderr)
             assert False, f"Error while receiving a message from a socket in switch offer."
 
+    def switch_global_greeting(self, modified_test_name="SWITCH_GLOBAL_GREETING"):
+        # this test stimulates 2 switches connect to the target switch (global), user executes the switch
+        # the target switch has an IP address of 130.0.0.1/8 in global mode
+        # the map of the connection:
+        #
+        #            [S1] ----------------------> [T] ----------------------> [S2]
+        #     Switch Stimulator           ./RUSHBSwitch               Switch Stimulator
+        #
+        #
+        # run the test using: python3 RUSHB.py -m SWITCH_GLOBAL_GREETING -o SWITCH_GLOBAL_GREETING.bout
+        # check output using: diff SWITCH_GLOBAL_GREETING.bout test_files/SWITCH_GLOBAL_GREETING.bout
+        tcp_sock_1 = new_tcp_socket(0)  # sock 1
+        tcp_sock_2 = new_tcp_socket(0)  # sock 2
+        self._my_sockets.append(tcp_sock_1)
+        self._my_sockets.append(tcp_sock_2)
+        port = str(tcp_sock_2.getsockname()[1])
+        with open(f"./{modified_test_name}.b2in", "w+") as port_writer:
+            port_writer.write(f"connect {str(port)}\n")
+            port_writer.flush()
+        sys.stderr.write(
+            f"Run your switch with these argument:\n\t[./RUSHBSwitch | java RUSHBSwitch | python3 RUSHBSwitch.py] global 130.0.0.1/8 2 2 < {modified_test_name}.b2in > {modified_test_name}.b2out\n")
+        sys.stderr.flush()
+        # [S2] listen from [T]
+        tcp_sock_2.listen()
+        conn, addr = tcp_sock_2.accept()
+        self._target_sockets.append(conn)
+        # Hang on, now [S1] connects to [T], hmm, so tricky?
+        file_path = f"{modified_test_name}.b2out"
+        info = get_info_file(file_path)
+        switch_name_1 = "[S1] "
+        tcp_sock_1.connect(info)
+        pkt, add = build_packet(source_ip="0.0.0.0", destination_ip="0.0.0.0", offset=0x000000, mode=DISCOVERY, misc="0.0.0.0")
+        self._send(pkt, add, tcp_sock_1, target_info=info, print_out=True, extend_message=switch_name_1)
+        self._recv(tcp_sock_1, print_out=True, extend_message=switch_name_1)
+        pkt, add = build_packet(source_ip="0.0.0.0", destination_ip="130.0.0.1", offset=0x000000, mode=REQUEST, misc="130.0.0.2")
+        self._send(pkt, add, tcp_sock_1, target_info=info, print_out=True, extend_message=switch_name_1)
+        self._recv(tcp_sock_1, print_out=True, extend_message=switch_name_1)
+        pkt, add = build_packet(source_ip="130.0.0.2", destination_ip="130.0.0.1", offset=0x000000, mode=LOCATION, misc=(2, 0))
+        self._send(pkt, add, tcp_sock_1, target_info=info, print_out=True, extend_message=switch_name_1)
+        self._recv(tcp_sock_1, print_out=True, extend_message=switch_name_1)
+        # Now go back to [S2], target switch won't send location of [S1] to [S2] because they haven't connected yet
+        switch_name_2 = "[S2] "
+        self._switch_offer(conn, addr, host_ip="135.0.0.1", assigned_ip="135.0.0.2", location=(0, 2), switch_name=switch_name_2)
+        # [S1] now receives the distance of [S2] from [T]
+        self._recv(tcp_sock_1, print_out=True, extend_message=switch_name_1)
+        return tcp_sock_1, conn, info
+
+    def minimap_3(self):
+        # this test stimulates 2 switches (in a minimap) connect to the target switch (global), target is the 3rd component
+        # the target switch has an IP address of 130.0.0.1/8 in global mode
+        # the map of the connection:
+        #
+        #   ... -----[S1] ----------------------> [T] ----------------------> [S2]-----...
+        #     Switch Stimulator           ./RUSHBSwitch               Switch Stimulator
+        #
+        #
+        # run the test using: python3 RUSHB.py -m MINIMAP_3 -o MINIMAP_3.bout
+        # check output using: diff MINIMAP_3.bout test_files/MINIMAP_3.bout
+        tcp_sock_1, tcp_sock_2, info = self.switch_global_greeting(modified_test_name="MINIMAP_3")
+        switch_name_1 = "[S1] "
+        switch_name_2 = "[S2] "
+        # [S2] forwards the distance of local network to [T]
+        pkt, add = build_packet(source_ip="135.0.0.1", destination_ip="135.0.0.2", offset=0x000000, mode=DISTANCE, misc=("10.0.0.1", 10))
+        self._send(pkt, add, tcp_sock_2, target_info=info, print_out=True,  extend_message=switch_name_2)
+        # [S1] receives the location from [T]
+        self._recv(tcp_sock_1, print_out=True, extend_message=switch_name_1)
+        # [S1] sends the data to destination
+        pkt, add = build_packet(source_ip="130.0.0.2", destination_ip="130.0.0.1", offset=0x000000, mode=QUERY)
+        self._send(pkt, add, tcp_sock_1, target_info=info, print_out=True,  extend_message=switch_name_1)
+        self._recv(tcp_sock_1, print_out=True, extend_message=switch_name_1)
+        pkt, add = build_packet(source_ip="192.168.1.2", destination_ip="10.0.0.6", offset=0x000000, mode=DATA,  misc="HELLO WORLD")
+        self._send(pkt, add, tcp_sock_1, target_info=info, print_out=True,  extend_message=switch_name_1)
+        # [S2] now receives message from [T]
+        self._recv(tcp_sock_2, print_out=True, extend_message=switch_name_2)
+        pkt, add = build_packet(source_ip="135.0.0.1", destination_ip="135.0.0.2", offset=0x000000, mode=AVAILABLE)
+        self._send(pkt, add, tcp_sock_2, target_info=info, print_out=True,  extend_message=switch_name_2)
+        self._recv(tcp_sock_2, print_out=True, extend_message=switch_name_2)
+        # [S2] wait 5 seconds to let [T] establishes the query to [S1]
+        time.sleep(5)
+        pkt, add = build_packet(source_ip="135.0.0.1", destination_ip="135.0.0.2", offset=0x000000, mode=QUERY)
+        self._send(pkt, add, tcp_sock_2, target_info=info, print_out=True, extend_message=switch_name_2)
+        self._recv(tcp_sock_2, print_out=True, extend_message=switch_name_2)
+        # [S2] sends message back to [T] and [T] has to remember the path
+        pkt, add = build_packet(source_ip="10.0.0.6", destination_ip="192.168.1.2", offset=0x000000, mode=DATA, misc="HELLO WORLD")
+        self._send(pkt, add, tcp_sock_2, target_info=info, print_out=True, extend_message=switch_name_2)
+        # [S1] now receive the query and the message
+        self._recv(tcp_sock_1, print_out=True, extend_message=switch_name_1)
+        pkt, add = build_packet(source_ip="130.0.0.2", destination_ip="130.0.0.1", offset=0x000000, mode=AVAILABLE)
+        self._send(pkt, add, tcp_sock_1, target_info=info, print_out=True, extend_message=switch_name_1)
+        self._recv(tcp_sock_1, print_out=True, extend_message=switch_name_1)
+
+    def switch_local2_greeting(self, modified_test_name="SWITCH_LOCAL2_GREETING"):
+        # this test stimulates an adapter and a switch connect to the target switch (local 2), user executes the switch
+        # the target switch has an IP address of 130.0.0.1/8 10.0.0.1/8
+        # the map of the connection:
+        #
+        #          [S] ----------------------> [T] <---------------------- [A]
+        #     Switch Stimulator           ./RUSHBSwitch               Adapter Stimulator
+        #
+        #
+        # run the test using: python3 RUSHB.py -m SWITCH_LOCAL2_GREETING -o SWITCH_LOCAL2_GREETING.bout
+        # check output using: diff SWITCH_LOCAL2_GREETING.bout test_files/SWITCH_LOCAL2_GREETING.bout
+        sys.stderr.write(
+            f"Run your switch with these argument:\n\t[./RUSHBSwitch | java RUSHBSwitch | python3 RUSHBSwitch.py] local 10.0.0.1/8 130.0.0.1/8 2 2 > {modified_test_name}.b2out\n")
+        sys.stderr.flush()
+        file_path = f"{modified_test_name}.b2out"
+        udp_info = get_info_file(file_path)
+        tcp_info = get_info_file(file_path, skip=1)
+        # [A] greeting with [T]
+        udp_sock = new_udp_socket(0)  # udp connection
+        self._my_sockets.append(udp_sock)
+        adapter_name = "[A] "
+        pkt, add = build_packet(source_ip="0.0.0.0", destination_ip="0.0.0.0", offset=0x000000, mode=DISCOVERY, misc="0.0.0.0")
+        self._send(pkt, add, udp_sock, target_info=udp_info, print_out=True, extend_message=adapter_name)
+        self._recv(udp_sock, print_out=True, extend_message=adapter_name)
+        pkt, add = build_packet(source_ip="0.0.0.0", destination_ip="10.0.0.1", offset=0x000000, mode=REQUEST, misc="10.0.0.2")
+        self._send(pkt, add, udp_sock, target_info=udp_info, print_out=True, extend_message=adapter_name)
+        self._recv(udp_sock, print_out=True, extend_message=adapter_name)
+        # [S] greeting with [T]
+        tcp_sock = new_tcp_socket(0)
+        self._my_sockets.append(tcp_sock)
+        switch_name = "[S] "
+        tcp_sock.connect(tcp_info)
+        pkt, add = build_packet(source_ip="0.0.0.0", destination_ip="0.0.0.0", offset=0x000000, mode=DISCOVERY, misc="0.0.0.0")
+        self._send(pkt, add, tcp_sock, target_info=tcp_info, print_out=True, extend_message=switch_name)
+        self._recv(tcp_sock, print_out=True, extend_message=switch_name)
+        pkt, add = build_packet(source_ip="0.0.0.0", destination_ip="130.0.0.1", offset=0x000000, mode=REQUEST, misc="130.0.0.2")
+        self._send(pkt, add, tcp_sock, target_info=tcp_info, print_out=True, extend_message=switch_name)
+        self._recv(tcp_sock, print_out=True, extend_message=switch_name)
+        pkt, add = build_packet(source_ip="130.0.0.2", destination_ip="130.0.0.1", offset=0x000000, mode=LOCATION, misc=(2, 0))
+        self._send(pkt, add, tcp_sock, target_info=tcp_info, print_out=True, extend_message=switch_name)
+        self._recv(tcp_sock, print_out=True, extend_message=switch_name)  # location
+        # may stuck here, if stuck here please ask me on Ed asap
+        self._recv(tcp_sock, print_out=True, extend_message=switch_name)  # distance
+        return (tcp_sock, tcp_info), (udp_sock, udp_info)
+
     def switch_forward_message(self):
-        # this test will stimulate an adapter and a switch in 2 side of target switch, user will executes the switch
+        # this test stimulates an adapter and a switch in 2 side of target switch, user executes the switch
         # the target switch has an IP address of 192.168.1.1/24 run in local mode
         # the map of the connection:
         #
@@ -398,7 +567,7 @@ class Connection:
         pkt, add = build_packet(source_ip="0.0.0.0", destination_ip="192.168.1.1", offset=0x000000, mode=REQUEST, misc="192.168.1.2")
         self._send(pkt, add, udp_sock, target_info=info, print_out=True, extend_message=adapter_name)
         self._recv(udp_sock, print_out=True, extend_message=adapter_name)
-        pkt, add = build_packet(source_ip="192.168.1.2", destination_ip="20.0.0.1", offset=0x000000, mode=DATA, misc="HELLO WORLD")
+        pkt, add = build_packet(source_ip="192.168.1.2", destination_ip="135.0.0.1", offset=0x000000, mode=DATA, misc="HELLO WORLD")
         self._send(pkt, add, udp_sock, target_info=info, print_out=True, extend_message=adapter_name)
         # tcp connection
         self._recv(conn, print_out=True, extend_message=switch_name)
@@ -406,8 +575,8 @@ class Connection:
         self._send(pkt, add, conn, target_info=info, print_out=True, extend_message=switch_name)
         self._recv(conn, print_out=True, extend_message=switch_name)
 
-    def switch_distance_switch(self, modified_test_name=None):
-        # this test will stimulate 2 switch connect 2 side of the target switch, user will executes the switch
+    def switch_distance_switch(self, modified_test_name="SWITCH_DISTANCE_SWITCH"):
+        # this test stimulates 2 switch connect 2 side of the target switch, user executes the switch
         # the target switch has an IP address of 192.168.1.1/24 run in local mode
         # the map of the connection:
         #
@@ -424,16 +593,12 @@ class Connection:
         tcp_sock_2 = new_tcp_socket(0)  # sock 2
         self._my_sockets.append(tcp_sock_2)
         port_2 = str(tcp_sock_2.getsockname()[1])
-        if modified_test_name is not None:
-            test_name = modified_test_name
-        else:
-            test_name = "SWITCH_DISTANCE_SWITCH"
-        with open(f"./{test_name}.b2in", "w+") as port_writer:
+        with open(f"./{modified_test_name}.b2in", "w+") as port_writer:
             port_writer.write(f"connect {str(port_1)}\nconnect {str(port_2)}\n")
             port_writer.flush()
 
         sys.stderr.write(
-            f"Run your switch with these argument:\n\t[./RUSHBSwitch | java RUSHBSwitch | python3 RUSHBSwitch.py] local 192.168.1.1/24 0 2 < {test_name}.b2in > {test_name}.b2out\n")
+            f"Run your switch with these argument:\n\t[./RUSHBSwitch | java RUSHBSwitch | python3 RUSHBSwitch.py] local 192.168.1.1/24 0 2 < {modified_test_name}.b2in > {modified_test_name}.b2out\n")
         sys.stderr.flush()
         tcp_sock_1.listen()
         conn_1, addr_1 = tcp_sock_1.accept()
@@ -450,7 +615,7 @@ class Connection:
         return (conn_1, addr_1), (conn_2, addr_2)
 
     def switch_routing_simple(self, test_name="SWITCH_ROUTING_SIMPLE", data_destination="134.0.0.1", d1=3, d2=5):
-        # this test will stimulate 2 switches and an adapter that connecting to the target switch, user executes a switch
+        # this test stimulates 2 switches and an adapter that connecting to the target switch, user executes a switch
         # the target switch has an IP address of 192.168.1.1/24 run in local mode
         # the map of the connection:
         #
@@ -473,7 +638,7 @@ class Connection:
         self._recv(info_2[0], print_out=True, extend_message=switch_2_name)
         # [S2] -> [T] : D([S3])
         pkt, add = build_packet(source_ip="136.0.0.1", destination_ip="136.0.0.2", offset=0x000000, mode=DISTANCE, misc=("134.0.0.1", d2))
-        self._send(pkt, add, info_1[0], target_info=info_1[1], print_out=True, extend_message=switch_1_name)
+        self._send(pkt, add, info_2[0], target_info=info_2[1], print_out=True, extend_message=switch_2_name)
         # [T] -> [S1] : D([S3])
         self._recv(info_1[0], print_out=True, extend_message=switch_1_name)
         # [A] -> [T] : "HELLO WORLD"
@@ -497,7 +662,7 @@ class Connection:
         self._recv(info_1[0], print_out=True, extend_message=switch_1_name)
 
     def switch_routing_prefix(self):
-        # this test will stimulate 2 switches and an adapter that connecting to the target switch, user executes a switch
+        # this test stimulates 2 switches and an adapter that connecting to the target switch, user executes a switch
         # the target switch has an IP address of 192.168.1.1/24 run in local mode
         # the map of the connection:
         #
@@ -521,14 +686,24 @@ ADAPTER_FRAGMENTATION = [Connection.adapter_fragmentation]
 ADAPTER_WRONG_RECEIVE = [Connection.adapter_wrong_receive]
 
 SWITCH_GREETING_ADAPTER = [Connection.switch_greeting_adapter]
+SWITCH_MULTI_ADAPTER = [Connection.switch_multi_adapter]
 SWITCH_FORWARD_MESSAGE = [Connection.switch_forward_message]
 SWITCH_DISTANCE_SWITCH = [Connection.switch_distance_switch]
 
 SWITCH_ROUTING_SIMPLE = [Connection.switch_routing_simple]
 SWITCH_ROUTING_PREFIX = [Connection.switch_routing_prefix]
 
+SWITCH_GLOBAL_GREETING = [Connection.switch_global_greeting]
+SWITCH_LOCAL2_GREETING = [Connection.switch_local2_greeting]
+
+MINIMAP_3 = [Connection.minimap_3]
+
 
 def main(argv):
+    for p in Path(".").glob("*out"):
+        p.unlink()
+    time.sleep(1)
+
     sys.stdout.write('RUSHB_PROTOCOL_VERSION: ' + RUSHB_PROTOCOL_VERSION + '\n')
     sys.stdout.flush()
 
@@ -546,7 +721,11 @@ def main(argv):
                     'SWITCH_FORWARD_MESSAGE': SWITCH_FORWARD_MESSAGE,
                     'SWITCH_DISTANCE_SWITCH': SWITCH_DISTANCE_SWITCH,
                     'SWITCH_ROUTING_SIMPLE': SWITCH_ROUTING_SIMPLE,
-                    'SWITCH_ROUTING_PREFIX': SWITCH_ROUTING_PREFIX
+                    'SWITCH_ROUTING_PREFIX': SWITCH_ROUTING_PREFIX,
+                    'SWITCH_GLOBAL_GREETING': SWITCH_GLOBAL_GREETING,
+                    'MINIMAP_3': MINIMAP_3,
+                    'SWITCH_LOCAL2_GREETING': SWITCH_LOCAL2_GREETING,
+                    'SWITCH_MULTI_ADAPTER': SWITCH_MULTI_ADAPTER
                     }.get(argv[i + 2].upper(), ADAPTER_GREETING)
         elif arg == '-o':
             output = open(argv[i + 2], "w")
