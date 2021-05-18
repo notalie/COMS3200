@@ -113,11 +113,17 @@ def parse_data_packet(data, current_switch):
 			if dst_ip in switch.distance_map:
 				chosen_switches.append(switch)
 
-		for switch in chosen_switches:
-			if closest_switch == None:
-				closest_switch = switch
-			elif closest_switch.distance_map[dst_ip] > switch.distance_map[dst_ip]:
-				closest_switch = switch
+		for adapter in current_switch.connected_adapters:
+			if dst_ip == adapter.ip:
+				closest_switch = adapter
+				break
+
+		if closest_switch == None:
+			for switch in chosen_switches:
+				if closest_switch == None:
+					closest_switch = switch
+				elif closest_switch.distance_map[dst_ip] > switch.distance_map[dst_ip]:
+					closest_switch = switch
 
 		# Wasn't able to find the connecting switch, use prefix
 		if closest_switch == None:
@@ -130,7 +136,7 @@ def parse_data_packet(data, current_switch):
 				break
 
 		# Save packet
-		closest_switch.lastest_packet = utils.create_adapter_packet(src_ip, dst_ip, DATA, None, data[0][12:].decode('utf-8'))
+		closest_switch.lastest_packet = utils.create_adapter_packet(src_ip, dst_ip, data[0][11], None, data[0][12:].decode('utf-8'))
 		
 		if closest_switch.verified == False: # Hasn't been a handshake in the past few seconds, send the QUERY packet and save the packet to send
 			packet = utils.create_switch_packet(closest_switch.my_ip, closest_switch.src_ip, QUERY, 0, 0)
@@ -151,7 +157,7 @@ def parse_data(data, current_switch):
 		else:
 			# Check if the there is too many adapters connected
 			switch_greeting.greeting_protocol_receive(data, current_switch)
-	elif data[0][11] == DATA:
+	elif data[0][11] == DATA or data[0][11] == MORE_FRAG or data[0][11] == END_FRAG:
 		parse_data_packet(data, current_switch)
 
 # ----------- Data between a switch and a switch (TCP open to begin with) ------
@@ -184,7 +190,7 @@ def parse_switch_data(data, current_switch, port, conn):
 				if switch.src_ip != latest_switch.src_ip:
 					packet = utils.create_switch_packet(switch.my_ip, switch.src_ip, DISTANCE, target_ip, latest_switch.distance)
 					switch.sock.sendto(packet, (LOCALHOST, switch.port))
-	elif data[0][11] == DATA:
+	elif data[0][11] == DATA or data[0][11] == MORE_FRAG or data[0][11] == END_FRAG:
 		parse_data_packet(data, current_switch)
 	elif data[0][11] == LOCATION or DISTANCE:
 		switch_connection.parse_data(data[0], current_switch)

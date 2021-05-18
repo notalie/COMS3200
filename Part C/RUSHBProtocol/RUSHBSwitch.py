@@ -2,7 +2,7 @@ import sys
 import switch_utils
 import threading
 
-RECVSIZE = 1024
+RECVSIZE = 2048 
 
 current_switch = None
 

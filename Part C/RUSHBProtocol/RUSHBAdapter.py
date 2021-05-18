@@ -7,7 +7,7 @@ import threading
 
 LOCALHOST = "127.0.0.1"
 EMPTY_IP = "0.0.0.0"
-RECVSIZE = 1024
+RECVSIZE = 1500
 
 # python3 RUSHBAdapter.py port#
 PORT_NUM = int(sys.argv[1])
@@ -27,9 +27,7 @@ data = adapter_utils.greeting_protocol(PORT_NUM, sock)
 ASSIGNED_IP = socket.inet_ntoa(data[12:16])
 SWITCH_IP = socket.inet_ntoa(data[0:4])
 
-# Initial print of >
-
-
+# Receive from connected switch
 def recv_packets(sock):
 	sys.stdout.flush()
 	while True:

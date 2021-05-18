@@ -171,7 +171,7 @@ def parse_data(data, current_switch):
 		chosen_switch.verified_function.start()
 		current_switch.last_received_ip = chosen_switch.src_ip
 
-	elif data[11] == DATA:
+	elif data[11] == DATA or data[0][11] == MORE_FRAG or data[0][11] == END_FRAG:
 		switch_utils.parse_data_packet((data, None), current_switch)
 
 

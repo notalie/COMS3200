@@ -234,7 +234,7 @@ class Connection:
         # [A] -> [T]
         # run the test using: python3 RUSHB.py -m ADAPTER_GREETING -o ADAPTER_GREETING.bout
         # check output using: diff ADAPTER_GREETING.bout test_files/ADAPTER_GREETING.bout
-        sock = new_udp_socket(0)
+        sock = new_udp_socket(8080)
         self._my_sockets.append(sock)
         port = str(sock.getsockname()[1])
         sys.stdout.write(port + "\n")

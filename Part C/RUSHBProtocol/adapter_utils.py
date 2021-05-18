@@ -88,11 +88,6 @@ def check_query(data, ASSIGNED_IP, SWITCH_IP, PORT_NUM, sock):
 		# Create Available packet
 		packet = utils.create_adapter_packet(ASSIGNED_IP, SWITCH_IP, AVAILABLE, EMPTY_IP, None)
 		sock.sendto(packet, (LOCALHOST, PORT_NUM))
-		while True:
-			# Wait for Data Packet
-			data = sock.recvfrom(RECVSIZE)[0]
-			if check_data(data, ASSIGNED_IP) == True: # Print out received packet
-				break
 		
 # Receive Data
 def check_data(data, ASSIGNED_IP):
@@ -114,11 +109,22 @@ def frag_data(data, ASSIGNED_IP, sock):
 
 def recv_data(data, ASSIGNED_IP, SWITCH_IP, PORT_NUM, sock):
 	if data[11] == QUERY:
-		if data[11] == QUERY:
-			check_query(data, ASSIGNED_IP, SWITCH_IP, PORT_NUM, sock)
+		check_query(data, ASSIGNED_IP, SWITCH_IP, PORT_NUM, sock)
+	elif data[11] == DATA:
+		check_data(data, ASSIGNED_IP)
 	elif data[11] == MORE_FRAG:
-		pass
+		FRAGRECVSIZE = 1500
+		received_string = data[12:].decode("utf-8")
 
+		while True:
+			recv_data = sock.recvfrom(FRAGRECVSIZE)[0]
+			received_string += recv_data[12:].decode("utf-8")
+			if recv_data[11] == END_FRAG:
+				break
+
+		print("\b" + "\b" + "Received from {}: {}".format(socket.inet_ntoa(data[0:4]), received_string))
+		print(">", end=" ")
+		sys.stdout.flush()
 
 
 
