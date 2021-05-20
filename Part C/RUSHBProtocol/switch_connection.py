@@ -135,7 +135,7 @@ def parse_data(data, current_switch):
 			if switch.src_ip == src_ip:
 				closest_switch = switch
 
-		if closest_switch.lastest_packet != None:
+		if closest_switch.lastest_packet != []:
 			closest_switch.verified = True
 			if closest_switch.verified_function != None:
 				closest_switch.verified_function.cancel()
@@ -143,8 +143,9 @@ def parse_data(data, current_switch):
 			closest_switch.verified_function = threading.Timer(5, toggle_verified, [closest_switch])
 			closest_switch.verified_function.start()
 			# Receive available, send the packet to send
-			closest_switch.sock.sendto(closest_switch.lastest_packet, (LOCALHOST, closest_switch.port))
-			closest_switch.lastest_packet = None
+			for packet in closest_switch.lastest_packet:
+				closest_switch.sock.sendto(packet, (LOCALHOST, closest_switch.port))
+			closest_switch.lastest_packet = []
 			current_switch.last_received_ip = closest_switch.src_ip
 
 	elif data[11] == QUERY:

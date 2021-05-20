@@ -26,7 +26,7 @@ MORE_FRAG = 0x0a
 END_FRAG = 0x0b
 INVALID = 0x00
 
-RECVSIZE = 1024
+RECVSIZE = 2048
 
 # /x : num hosts
 CIDR_CONVERSION = {
@@ -104,50 +104,61 @@ def parse_data_packet(data, current_switch):
 	src_ip = socket.inet_ntoa(data[0][0:4])
 	dst_ip = socket.inet_ntoa(data[0][4:8])
 
-	# Size < 1488 is the max size
-	if len(data[0][12:]) <= 1488: # Packet doesn't need fragmenting
-		chosen_switches = []
-		closest_switch = None
+	chosen_switches = []
+	closest_switch = None
 
-		for switch in current_switch.connected_switches:
-			if dst_ip in switch.distance_map:
-				chosen_switches.append(switch)
+	for switch in current_switch.connected_switches:
+		if dst_ip in switch.distance_map:
+			chosen_switches.append(switch)
 
-		for adapter in current_switch.connected_adapters:
-			if dst_ip == adapter.ip:
-				closest_switch = adapter
-				break
+	for adapter in current_switch.connected_adapters:
+		if dst_ip == adapter.ip:
+			closest_switch = adapter
+			break
 
-		if closest_switch == None:
-			for switch in chosen_switches:
-				if closest_switch == None:
-					closest_switch = switch
-				elif closest_switch.distance_map[dst_ip] > switch.distance_map[dst_ip]:
-					closest_switch = switch
+	if closest_switch == None:
+		for switch in chosen_switches:
+			if closest_switch == None:
+				closest_switch = switch
+			elif closest_switch.distance_map[dst_ip] > switch.distance_map[dst_ip]:
+				closest_switch = switch
 
-		# Wasn't able to find the connecting switch, use prefix
-		if closest_switch == None:
-			closest_switch = switch_connection.get_closest_ip(current_switch, dst_ip)
+	# Wasn't able to find the connecting switch, use prefix
+	if closest_switch == None:
+		closest_switch = switch_connection.get_closest_ip(current_switch, dst_ip)
 
-		# Add switches src_ip[src_ip] = really high number to show that it's connected but no idea how large, it will change
-		for switch in current_switch.connected_switches:
-			if current_switch.last_received_ip != None and switch.src_ip == current_switch.last_received_ip and src_ip not in switch.distance_map:
-				switch.distance_map[src_ip] = 1001 # MAX DISTANCE - shouldn't be possible etc
-				break
+	# Add switches src_ip[src_ip] = really high number to show that it's connected but no idea how large, it will change
+	for switch in current_switch.connected_switches:
+		if current_switch.last_received_ip != None and switch.src_ip == current_switch.last_received_ip and src_ip not in switch.distance_map:
+			switch.distance_map[src_ip] = 1001 # MAX DISTANCE - shouldn't be possible etc
+			break
 
-		# Save packet
-		closest_switch.lastest_packet = utils.create_adapter_packet(src_ip, dst_ip, data[0][11], None, data[0][12:].decode('utf-8'))
-		
-		if closest_switch.verified == False: # Hasn't been a handshake in the past few seconds, send the QUERY packet and save the packet to send
-			packet = utils.create_switch_packet(closest_switch.my_ip, closest_switch.src_ip, QUERY, 0, 0)
-			closest_switch.sock.sendto(packet, (LOCALHOST, closest_switch.port))
-		else: # has been verified lately
-			closest_switch.sock.sendto(closest_switch.lastest_packet, (LOCALHOST, closest_switch.port))
-			closest_switch.lastest_packet = None
+	if len(data[0][12:]) > 1488: # Frag
+		MAX_LEN = 1488
+		counter = 1488
+		flag = MORE_FRAG
+		payload = data[0][12:]
 
-		current_switch.last_received_ip = None
-	else: # Fragmentation
-		pass
+		for i in range(0, len(payload), 1488):
+			data = payload[i:counter] # Get a range of 1488 (max payload size)
+			closest_switch.lastest_packet.append(utils.create_adapter_packet(src_ip, dst_ip, flag, None, data[0][12:].decode('utf-8')))
+			# Create a bunch of payloads here to add, change to use packet to use a for loop I think
+			if counter + 1488 >= len(payload):
+				flag = END_FRAG
+			else:
+				flag = MORE_FRAG
+			counter += 1488
+	else:
+		closest_switch.lastest_packet = [utils.create_adapter_packet(src_ip, dst_ip, data[0][11], None, data[0][12:].decode('utf-8'))]
+	
+	if closest_switch.verified == False: # Hasn't been a handshake in the past few seconds, send the QUERY packet and save the packet to send
+		packet = utils.create_switch_packet(closest_switch.my_ip, closest_switch.src_ip, QUERY, 0, 0)
+		closest_switch.sock.sendto(packet, (LOCALHOST, closest_switch.port))
+	else: # has been verified lately
+		closest_switch.sock.sendto(closest_switch.lastest_packet, (LOCALHOST, closest_switch.port))
+		closest_switch.lastest_packet = []
+
+	current_switch.last_received_ip = None
 
 def parse_data(data, current_switch):
 	if data[0][11] == DISCOVERY:
