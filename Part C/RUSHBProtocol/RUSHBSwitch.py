@@ -37,9 +37,11 @@ def udp_thread():
 def tcp_thread():
 	conn, addr = current_switch.global_sock.accept()
 	while True:
-		# //TODO: let a global switch recognise a new connecting switch
-		data = conn.recvfrom(RECVSIZE)
-		switch_utils.parse_switch_data(data, current_switch, addr[1], conn)
+		try:	
+			data = conn.recvfrom(RECVSIZE)
+			switch_utils.parse_switch_data(data, current_switch, addr[1], conn)
+		except ConnectionResetError:
+			pass
 
 def read_stdin():
 	# Accept stdin

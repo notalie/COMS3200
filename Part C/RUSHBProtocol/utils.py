@@ -58,7 +58,7 @@ def create_adapter_packet(src_ip, dest_ip, mode, assigned_ip, data):
         packet += get_zeroes()
         packet += mode.to_bytes(1, "big")
         return packet
-    elif mode == DATA: # Commandline interface
+    elif mode == DATA or mode == MORE_FRAG or mode == END_FRAG : # Commandline interface/Sending data
         packet = socket.inet_aton(src_ip)
         packet += socket.inet_aton(dest_ip)
         packet += get_zeroes()

@@ -141,7 +141,7 @@ def parse_data_packet(data, current_switch):
 
 		for i in range(0, len(payload), 1488):
 			data = payload[i:counter] # Get a range of 1488 (max payload size)
-			closest_switch.lastest_packet.append(utils.create_adapter_packet(src_ip, dst_ip, flag, None, data[0][12:].decode('utf-8')))
+			closest_switch.lastest_packet.append(utils.create_adapter_packet(src_ip, dst_ip, flag, None, data.decode('utf-8')))
 			# Create a bunch of payloads here to add, change to use packet to use a for loop I think
 			if counter + 1488 >= len(payload):
 				flag = END_FRAG
@@ -306,7 +306,7 @@ class ConnectedSwitch():
 		self.port =	port
 		self.distance = 0
 		self.sock = sock
-		self.lastest_packet = None
+		self.lastest_packet = []
 
 		# Target IP : Distance
 		self.distance_map = {}
